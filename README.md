@@ -8,44 +8,22 @@ OFoster is an Odin implementation of the [Foster](https://github.com/FosterFrame
 - Odin nightly (the project uses the `vendor:sdl3` package shipped with Odin)
 - SDL3 runtime available from the Odin distribution
 
-## Run the examples
-
-From this directory:
-
-```bat
-run.bat
-```
-
-This runs `samples/basic`. Other examples can be selected by name:
-
-```bat
-run.bat feature
-run.bat batcher
-run.bat spatial
-run.bat calc
-run.bat backend
-run.bat app_composition
-```
-
-The source for every runnable example lives under `samples`; `build` contains
-only generated executables and test output.
-
-The `basic` example keeps its update/render loop running until the window is
-closed. SDL close events are handled by `App`, which sets the application to
-exit cleanly.
+The repository root is the OFoster library package. Runnable examples are
+maintained in the separate `OFoster_Sample` project.
 
 ## Use the framework
 
-Import `Framework` from an Odin program:
+Import the OFoster root package from an Odin program. When building from the repository root,
+define the collection once:
 
 ```odin
-import foster "path/to/OFoster/Framework"
+import foster "ofoster:."
 ```
 
 The package mirrors Foster's public concepts: `App`, `Window`, `GraphicsDevice`,
 `Texture`, `Target`, `Shader`, `Material`, `Mesh`, input bindings, spatial
-primitives, storage helpers, and utility functions. The package source lives in
-the `Framework` directory.
+primitives, storage helpers, and utility functions. Framework source files and
+public subpackages live at the repository root.
 
 ## App usage
 
@@ -56,7 +34,7 @@ inside your game state, register lifecycle procedures, and attach the state with
 ```odin
 package main
 
-import foster "path/to/OFoster/Framework"
+import foster "ofoster:."
 
 Game :: struct {
     App: foster.App,
@@ -90,4 +68,4 @@ main :: proc() {
 ```
 
 For a small program with no custom state, the callbacks can simply use the
-`^foster.App` argument directly, as shown in `samples/basic/main.odin`.
+`^foster.App` argument directly, as shown in the `OFoster_Sample` project.
