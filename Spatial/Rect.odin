@@ -47,6 +47,19 @@ RectIntersection :: proc(rect, other: Rect) -> Rect {
 	return Rect{left, top, right-left, bottom-top}
 }
 
+RectDifference :: proc(rect, other: Rect) -> [dynamic]Rect {
+	result: [dynamic]Rect
+	r := RectValidateSize(rect)
+	o := RectValidateSize(other)
+	i := RectIntersection(r, o)
+	if i.Width <= 0 || i.Height <= 0 { append(&result, r); return result }
+	if i.Y > r.Y { append(&result, Rect{r.X, r.Y, r.Width, i.Y-r.Y}) }
+	if RectBottom(i) < RectBottom(r) { append(&result, Rect{r.X, RectBottom(i), r.Width, RectBottom(r)-RectBottom(i)}) }
+	if i.X > r.X { append(&result, Rect{r.X, i.Y, i.X-r.X, i.Height}) }
+	if RectRight(i) < RectRight(r) { append(&result, Rect{RectRight(i), i.Y, RectRight(r)-RectRight(i), i.Height}) }
+	return result
+}
+
 RectGetPointSector :: proc(rect: Rect, point: Vec2) -> u8 {
 	sector: u8 = 0
 	if point[0] < rect.X { sector |= 0b0001 } else if point[0] >= RectRight(rect) { sector |= 0b0010 }

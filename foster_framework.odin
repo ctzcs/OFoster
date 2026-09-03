@@ -5,8 +5,8 @@ import SDL "vendor:sdl3"
 
 // Keep the port's public version aligned with the upstream Foster package.
 FosterVersionMajor :: 0
-FosterVersionMinor :: 3
-FosterVersionPatch :: 0
+FosterVersionMinor :: 4
+FosterVersionPatch :: 2
 
 version_string :: proc() -> string {
 	return fmt.aprintf("%d.%d.%d", FosterVersionMajor, FosterVersionMinor, FosterVersionPatch)

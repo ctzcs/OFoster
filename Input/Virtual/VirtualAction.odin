@@ -19,7 +19,7 @@ VirtualActionMake :: proc(input: ^runtime.Input, name: string, set := sets.Actio
 	return VirtualAction{Base=VirtualInputMake(input,name,controller_index), Set=set, RepeatDelay=runtime.RepeatDelay, RepeatInterval=runtime.RepeatInterval, Buffer=buffer}
 }
 VirtualActionUpdate :: proc(v: ^VirtualAction, t: runtime.Time) {
-	if v.Base.IsDisposed || v.Base.Input == nil { return }
+	if v.Base.IsDisposed || !v.Base.Active || v.Base.Input == nil { return }
 	s := sets.ActionBindingSetGetState(&v.Set, v.Base.Input, v.Base.ControllerIndex)
 	v.Pressed, v.Released, v.Down, v.Value = s.Pressed, s.Released, s.Down, s.Value
 	v.ValueNoDeadzone = s.Value
@@ -31,6 +31,7 @@ VirtualActionUpdate :: proc(v: ^VirtualAction, t: runtime.Time) {
 		v.Repeated = int(previous/f64(v.RepeatInterval)) < int(elapsed/f64(v.RepeatInterval))
 	}
 }
+VirtualActionManualUpdate :: proc(v: ^VirtualAction, t: runtime.Time) { VirtualActionUpdate(v, t) }
 VirtualActionConsumePress :: proc(v: ^VirtualAction) -> bool { if v.Pressed { v.Pressed=false; v.PressConsumed=true; return true }; return false }
 VirtualActionClear :: proc(v: ^VirtualAction) { v.Pressed=false; v.Released=false; v.PressConsumed=true; v.Down=false; v.Repeated=false; v.Value=0; v.ValueNoDeadzone=0 }
 VirtualActionSetControllerIndex :: proc(v: ^VirtualAction, index: int) { VirtualInputSetControllerIndex(&v.Base,index) }

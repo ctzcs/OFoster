@@ -127,6 +127,17 @@ DefaultResources :: struct {
 	Initialized: bool,
 }
 
+time_seconds_f :: proc(t: Time) -> f32 {
+	return f32(coretime.duration_seconds(t.Elapsed))
+}
+
+time_between_interval :: proc(t: Time, interval: f64, offset: f64 = 0) -> bool {
+	return BetweenIntervalCalc(coretime.duration_seconds(t.Elapsed), interval, offset)
+}
+
+TimeSecondsF :: time_seconds_f
+TimeBetweenInterval :: time_between_interval
+
 GraphicsDevice :: struct {
 	Driver: GraphicsDriver,
 	VSync: bool,

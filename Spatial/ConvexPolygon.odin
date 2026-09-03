@@ -4,6 +4,39 @@ import "core:math"
 
 ConvexPolygon :: struct { Vertices: [dynamic]Vec2 }
 ConvexPolygonMake :: proc(vertices: ..Vec2) -> ConvexPolygon { result: ConvexPolygon; for vertex in vertices { append(&result.Vertices,vertex) }; return result }
+
+ConvexPolygonHull :: proc(points: []Vec2) -> ConvexPolygon {
+	result: ConvexPolygon
+	if len(points) <= 1 { for p in points { append(&result.Vertices, p) }; return result }
+	sorted: [dynamic]Vec2 = {}
+	append(&sorted, ..points)
+	for i := 1; i < len(sorted); i += 1 {
+		value := sorted[i]
+		j := i - 1
+		for j >= 0 && (sorted[j][0] > value[0] || (sorted[j][0] == value[0] && sorted[j][1] > value[1])) {
+			sorted[j+1] = sorted[j]
+			j -= 1
+		}
+		sorted[j+1] = value
+	}
+	cross := proc(o, a, b: Vec2) -> f32 { return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]) }
+	hull: [dynamic]Vec2 = {}
+	for p in sorted {
+		for len(hull) >= 2 && cross(hull[len(hull)-2], hull[len(hull)-1], p) <= 0 { resize(&hull, len(hull)-1) }
+		append(&hull, p)
+	}
+	lower_count := len(hull)
+	for i := len(sorted)-2; i >= 0; i -= 1 {
+		p := sorted[i]
+		for len(hull) > lower_count && cross(hull[len(hull)-2], hull[len(hull)-1], p) <= 0 { resize(&hull, len(hull)-1) }
+		append(&hull, p)
+	}
+	if len(hull) > 1 { resize(&hull, len(hull)-1) }
+	result.Vertices = hull
+	return result
+}
+
+ConvexHull :: ConvexPolygonHull
 ConvexPolygonAdd :: proc(polygon: ^ConvexPolygon, vertex: Vec2) { append(&polygon.Vertices,vertex) }
 ConvexPolygonCount :: proc(polygon: ConvexPolygon) -> int { return len(polygon.Vertices) }
 ConvexPolygonBounds :: proc(polygon: ConvexPolygon) -> Rect {

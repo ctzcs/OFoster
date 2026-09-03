@@ -10,6 +10,9 @@ MaterialCopyTo :: runtime.MaterialCopyTo
 MaterialCopyFrom :: runtime.MaterialCopyFrom
 MaterialClone :: runtime.MaterialClone
 MaterialStageMaxUniformBuffers :: runtime.MaterialStageMaxUniformBuffers
+MaterialStageSetUniformBuffer :: runtime.MaterialStageSetUniformBuffer
+MaterialStageGetUniformBuffer :: runtime.MaterialStageGetUniformBuffer
+MaterialStageGetUniformBufferObject :: runtime.MaterialStageGetUniformBufferObject
 MaterialStageMaxSamplers :: runtime.MaterialStageMaxSamplers
 MaterialStageSetSampler :: runtime.MaterialStageSetSampler
 MaterialStageGetSampler :: runtime.MaterialStageGetSampler

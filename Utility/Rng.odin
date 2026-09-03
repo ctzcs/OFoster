@@ -21,6 +21,7 @@ RngDouble :: proc(r:^Rng)->f64{return f64(RngU64(r)>>11)/f64(1<<53)}
 RngBoolean :: proc(r:^Rng)->bool{return (RngU64(r)&1)!=0}
 RngChance :: proc(r:^Rng,p:f32)->bool{return RngFloat(r)<p}
 RngAngle :: proc(r:^Rng)->f32{return RngFloatMax(r,f32(math.TAU))}
+RngSpread :: proc(r:^Rng, angle, spread:f32)->f32{return angle+RngFloatRange(r,-spread,spread)}
 RngChoose :: proc(r:^Rng, choices: []$T)->T{if len(choices)==0{return {}};return choices[RngIntMax(r,len(choices))]}
 RngShuffle :: proc(r:^Rng, values: []$T){for i:=len(values)-1;i>0;i-=1{j:=RngIntMax(r,i+1);values[i],values[j]=values[j],values[i]}}
 RngPointInside :: proc(r:^Rng, rect: spatial.Rect)->spatial.Vec2{return spatial.RectOn(rect,RngFloat(r),RngFloat(r))}

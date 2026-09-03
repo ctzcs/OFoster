@@ -117,6 +117,7 @@ index_format_to_sdl :: proc(format: IndexFormat) -> SDL.GPUIndexElementSize {
 ShaderStage :: enum {
 	Vertex,
 	Fragment,
+	Compute,
 }
 
 shader_stage_to_sdl :: proc(stage: ShaderStage) -> SDL.GPUShaderStage {
@@ -125,6 +126,10 @@ shader_stage_to_sdl :: proc(stage: ShaderStage) -> SDL.GPUShaderStage {
 		return .VERTEX
 	case .Fragment:
 		return .FRAGMENT
+	case .Compute:
+		// The bundled SDL3 bindings currently expose graphics shader stages
+		// only; compute dispatch remains a backend extension.
+		return .VERTEX
 	}
 	return .VERTEX
 }
@@ -136,6 +141,7 @@ ShaderCreateInfo :: struct {
 	UniformBufferCount: int,
 	StorageBufferCount: int,
 	EntryPoint: string,
+	ThreadCountX, ThreadCountY, ThreadCountZ: int,
 }
 
 default_shader_create_info :: proc(stage: ShaderStage, code: []u8) -> ShaderCreateInfo {
@@ -146,6 +152,9 @@ default_shader_create_info :: proc(stage: ShaderStage, code: []u8) -> ShaderCrea
 		UniformBufferCount = 0,
 		StorageBufferCount = 0,
 		EntryPoint = "main",
+		ThreadCountX = 1,
+		ThreadCountY = 1,
+		ThreadCountZ = 1,
 	}
 }
 
@@ -306,6 +315,42 @@ DepthCompare :: enum {
 	NotEqual,
 	GreatorOrEqual,
 }
+
+FillMode :: enum {
+	Fill,
+	Line,
+}
+
+StencilOp :: enum {
+	Invalid,
+	Keep,
+	Zero,
+	Replace,
+	IncrementAndClamp,
+	DecrementAndClamp,
+	Invert,
+	IncrementAndWrap,
+	DecrementAndWrap,
+}
+
+StencilState :: struct {
+	FailOp: StencilOp,
+	PassOp: StencilOp,
+	DepthFailOp: StencilOp,
+	CompareOp: DepthCompare,
+}
+
+StencilStateMake :: proc(op: StencilOp, compare: DepthCompare) -> StencilState {
+	return StencilState{FailOp = op, PassOp = op, DepthFailOp = op, CompareOp = compare}
+}
+
+TextureFlag :: enum u8 {
+	ComputeRead,
+	ComputeWrite,
+}
+
+TextureFlags :: distinct bit_set[TextureFlag; u8]
+TextureFlagsNone :: TextureFlags{}
 
 ClearMask :: enum u8 {
 	None = 0,

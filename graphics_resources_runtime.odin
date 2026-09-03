@@ -96,6 +96,8 @@ Texture :: struct {
 	IsTargetAttachment: bool,
 	Resource: ^SDL.GPUTexture,
 	ResolveResource: ^SDL.GPUTexture,
+	Pixels: [dynamic]u8,
+	Flags: TextureFlags,
 	Disposed: bool,
 }
 
@@ -163,11 +165,23 @@ texture_init_ex :: proc(tex: ^Texture, graphics_device: ^GraphicsDevice, width, 
 	tex.IsTargetAttachment = is_target_attachment
 	tex.Resource = resource
 	tex.ResolveResource = resolve_resource
+	tex.Flags = TextureFlags{}
+	delete(tex.Pixels)
+	tex.Pixels = nil
+	resize(&tex.Pixels, width * height * texture_format_size(format))
 	tex.Disposed = false
 }
 
 texture_init :: proc(tex: ^Texture, graphics_device: ^GraphicsDevice, width, height: int, format: TextureFormat = .Color, name: string = "") {
 	texture_init_ex(tex, graphics_device, width, height, format, .One, SDL.GPUTextureUsageFlags{.SAMPLER}, false, name)
+}
+
+texture_init_flags :: proc(tex: ^Texture, graphics_device: ^GraphicsDevice, width, height: int, format: TextureFormat, flags: TextureFlags, name: string = "") {
+	usage := SDL.GPUTextureUsageFlags{.SAMPLER}
+	if .ComputeRead in flags { usage += {.COMPUTE_STORAGE_READ} }
+	if .ComputeWrite in flags { usage += {.COMPUTE_STORAGE_WRITE} }
+	texture_init_ex(tex, graphics_device, width, height, format, .One, usage, false, name)
+	tex.Flags = flags
 }
 
 texture_dispose :: proc(tex: ^Texture) {
@@ -182,6 +196,8 @@ texture_dispose :: proc(tex: ^Texture) {
 	}
 	tex.Resource = nil
 	tex.ResolveResource = nil
+	delete(tex.Pixels)
+	tex.Pixels = nil
 	tex.Disposed = true
 }
 
@@ -224,6 +240,7 @@ texture_set_data :: proc(tex: ^Texture, data: rawptr, length: int) {
 		panic(create_error_from_sdl("SDL_MapGPUTransferBuffer"))
 	}
 	mem.copy(mapped, data, mem_size)
+	if mem_size > 0 { mem.copy(raw_data(tex.Pixels[:]), data, mem_size) }
 	SDL.UnmapGPUTransferBuffer(device, transfer)
 
 	command_buffer := SDL.AcquireGPUCommandBuffer(device)
@@ -250,9 +267,110 @@ texture_set_data :: proc(tex: ^Texture, data: rawptr, length: int) {
 
 TextureInit :: texture_init
 TextureInitEx :: texture_init_ex
+TextureInitFlags :: texture_init_flags
 TextureDispose :: texture_dispose
 TextureSetData :: texture_set_data
 TextureSampleResource :: texture_sample_resource
+
+texture_download_data :: proc(tex: ^Texture, allocator := context.allocator) -> []byte {
+	if tex == nil || tex.Disposed || tex.GraphicsDevice == nil || tex.GraphicsDevice.Device == nil || tex.Resource == nil { return nil }
+	mem_size := texture_memory_size(tex)
+	if mem_size <= 0 { return nil }
+	transfer := SDL.CreateGPUTransferBuffer(tex.GraphicsDevice.Device, SDL.GPUTransferBufferCreateInfo{usage = .DOWNLOAD, size = u32(mem_size), props = 0})
+	if transfer == nil { return nil }
+	defer SDL.ReleaseGPUTransferBuffer(tex.GraphicsDevice.Device, transfer)
+	command_buffer := SDL.AcquireGPUCommandBuffer(tex.GraphicsDevice.Device)
+	if command_buffer == nil { return nil }
+	copy_pass := SDL.BeginGPUCopyPass(command_buffer)
+	if copy_pass == nil { _ = SDL.CancelGPUCommandBuffer(command_buffer); return nil }
+	SDL.DownloadFromGPUTexture(copy_pass,
+		SDL.GPUTextureRegion{texture = texture_sample_resource(tex), mip_level = 0, layer = 0, x = 0, y = 0, z = 0, w = u32(tex.Width), h = u32(tex.Height), d = 1},
+		SDL.GPUTextureTransferInfo{transfer_buffer = transfer, offset = 0, pixels_per_row = u32(tex.Width), rows_per_layer = u32(tex.Height)})
+	SDL.EndGPUCopyPass(copy_pass)
+	if !SDL.SubmitGPUCommandBuffer(command_buffer) { return nil }
+	if !SDL.WaitForGPUIdle(tex.GraphicsDevice.Device) { return nil }
+	mapped := SDL.MapGPUTransferBuffer(tex.GraphicsDevice.Device, transfer, true)
+	if mapped == nil { return nil }
+	result := make([]byte, mem_size, allocator)
+	mem.copy(raw_data(result), mapped, mem_size)
+	SDL.UnmapGPUTransferBuffer(tex.GraphicsDevice.Device, transfer)
+	return result
+}
+
+texture_get_data :: proc(tex: ^Texture, allocator := context.allocator) -> []byte {
+	if tex == nil || tex.Disposed { return nil }
+	if tex.GraphicsDevice != nil && tex.GraphicsDevice.Device != nil && tex.Resource != nil {
+		if data := texture_download_data(tex, allocator); data != nil { return data }
+	}
+	result := make([]byte, len(tex.Pixels), allocator)
+	copy(result, tex.Pixels[:])
+	return result
+}
+
+texture_set_data_region :: proc(tex: ^Texture, data: []u8, x, y, width, height: int) {
+	if tex == nil || tex.Disposed || x < 0 || y < 0 || width <= 0 || height <= 0 { return }
+	if x + width > tex.Width || y + height > tex.Height { return }
+	bpp := texture_format_size(tex.Format)
+	if len(data) < width * height * bpp { return }
+	for row := 0; row < height; row += 1 {
+		src := row * width * bpp
+		dst := ((y + row) * tex.Width + x) * bpp
+		mem.copy(raw_data(tex.Pixels[dst:]), raw_data(data[src:]), width * bpp)
+	}
+	if len(tex.Pixels) > 0 { texture_set_data(tex, raw_data(tex.Pixels[:]), len(tex.Pixels)) }
+}
+
+texture_set_data_region_rect :: proc(tex: ^Texture, data: []u8, region: RectInt) {
+	texture_set_data_region(tex, data, region.X, region.Y, region.Width, region.Height)
+}
+
+texture_clone :: proc(tex: ^Texture, name: string = "") -> Texture {
+	result: Texture
+	if tex == nil || tex.Disposed || tex.GraphicsDevice == nil { return result }
+	usage := SDL.GPUTextureUsageFlags{.SAMPLER}
+	if .ComputeRead in tex.Flags { usage += {.COMPUTE_STORAGE_READ} }
+	if .ComputeWrite in tex.Flags { usage += {.COMPUTE_STORAGE_WRITE} }
+	texture_init_ex(&result, tex.GraphicsDevice, tex.Width, tex.Height, tex.Format, tex.SampleCount,
+		usage, false, name)
+	result.Flags = tex.Flags
+	if len(tex.Pixels) > 0 { texture_set_data(&result, raw_data(tex.Pixels[:]), len(tex.Pixels)) }
+	return result
+}
+
+texture_blit :: proc(source, destination: ^Texture, source_rect, destination_rect: RectInt) {
+	if source == nil || destination == nil || source.Disposed || destination.Disposed { return }
+	bpp := texture_format_size(source.Format)
+	if bpp != texture_format_size(destination.Format) || source_rect.Width <= 0 || source_rect.Height <= 0 { return }
+	if source_rect.X < 0 || source_rect.Y < 0 || source_rect.X + source_rect.Width > source.Width || source_rect.Y + source_rect.Height > source.Height { return }
+	if destination_rect.X < 0 || destination_rect.Y < 0 || destination_rect.Width != source_rect.Width || destination_rect.Height != source_rect.Height || destination_rect.X + destination_rect.Width > destination.Width || destination_rect.Y + destination_rect.Height > destination.Height { return }
+	for row := 0; row < source_rect.Height; row += 1 {
+		src := ((source_rect.Y + row) * source.Width + source_rect.X) * bpp
+		dst := ((destination_rect.Y + row) * destination.Width + destination_rect.X) * bpp
+		mem.copy(raw_data(destination.Pixels[dst:]), raw_data(source.Pixels[src:]), source_rect.Width * bpp)
+	}
+	if source.GraphicsDevice != nil && source.GraphicsDevice.Device != nil && source.Resource != nil && destination.Resource != nil {
+		command_buffer := SDL.AcquireGPUCommandBuffer(source.GraphicsDevice.Device)
+		if command_buffer != nil {
+			SDL.BlitGPUTexture(command_buffer, SDL.GPUBlitInfo{
+				source = SDL.GPUBlitRegion{texture = texture_sample_resource(source), x = u32(source_rect.X), y = u32(source_rect.Y), w = u32(source_rect.Width), h = u32(source_rect.Height)},
+				destination = SDL.GPUBlitRegion{texture = texture_sample_resource(destination), x = u32(destination_rect.X), y = u32(destination_rect.Y), w = u32(destination_rect.Width), h = u32(destination_rect.Height)},
+				load_op = .LOAD,
+				flip_mode = .NONE,
+				filter = .NEAREST,
+				cycle = false,
+			})
+			_ = SDL.SubmitGPUCommandBuffer(command_buffer)
+			_ = SDL.WaitForGPUIdle(source.GraphicsDevice.Device)
+		}
+	}
+}
+
+TextureGetData :: texture_get_data
+TextureDownloadData :: texture_download_data
+TextureSetDataRegion :: texture_set_data_region
+TextureSetDataRegionRect :: texture_set_data_region_rect
+TextureClone :: texture_clone
+TextureBlit :: texture_blit
 
 Shader :: struct {
 	GraphicsDevice: ^GraphicsDevice,
@@ -260,6 +378,7 @@ Shader :: struct {
 	Name: string,
 	CreateInfo: ShaderCreateInfo,
 	Resource: ^SDL.GPUShader,
+	ComputeResource: ^SDL.GPUComputePipeline,
 	PipelineHashes: [dynamic]u64,
 	Disposed: bool,
 }
@@ -303,6 +422,36 @@ shader_init :: proc(shader: ^Shader, graphics_device: ^GraphicsDevice, create_in
 		num_uniform_buffers = u32(create_info.UniformBufferCount),
 		props = 0,
 	}
+	if create_info.Stage == .Compute {
+		compute_info := SDL.GPUComputePipelineCreateInfo{
+			code_size = uint(len(create_info.Code)),
+			code = &create_info.Code[0],
+			entrypoint = to_cstring(entrypoint),
+			format = format,
+			num_samplers = u32(create_info.SamplerCount),
+			num_readonly_storage_textures = 0,
+			num_readonly_storage_buffers = u32(create_info.StorageBufferCount),
+			num_readwrite_storage_textures = 0,
+			num_readwrite_storage_buffers = 0,
+			num_uniform_buffers = u32(create_info.UniformBufferCount),
+			threadcount_x = u32(max(1, create_info.ThreadCountX)),
+			threadcount_y = u32(max(1, create_info.ThreadCountY)),
+			threadcount_z = u32(max(1, create_info.ThreadCountZ)),
+			props = 0,
+		}
+		compute_resource := SDL.CreateGPUComputePipeline(graphics_device.Device, compute_info)
+		if compute_resource == nil { panic(create_error_from_sdl("SDL_CreateGPUComputePipeline")) }
+		shader.GraphicsDevice = graphics_device
+		shader.Stage = create_info.Stage
+		shader.Name = name
+		shader.CreateInfo = create_info
+		shader.Resource = nil
+		shader.ComputeResource = compute_resource
+		delete(shader.PipelineHashes)
+		shader.PipelineHashes = nil
+		shader.Disposed = false
+		return
+	}
 
 	res := SDL.CreateGPUShader(graphics_device.Device, info)
 	if res == nil {
@@ -314,6 +463,7 @@ shader_init :: proc(shader: ^Shader, graphics_device: ^GraphicsDevice, create_in
 	shader.Name = name
 	shader.CreateInfo = create_info
 	shader.Resource = res
+	shader.ComputeResource = nil
 	delete(shader.PipelineHashes)
 	shader.PipelineHashes = nil
 	shader.Disposed = false
@@ -332,6 +482,10 @@ shader_recreate :: proc(shader: ^Shader, create_info: ShaderCreateInfo) {
 		SDL.ReleaseGPUShader(shader.GraphicsDevice.Device, shader.Resource)
 		shader.Resource = nil
 	}
+	if shader.ComputeResource != nil {
+		SDL.ReleaseGPUComputePipeline(shader.GraphicsDevice.Device, shader.ComputeResource)
+		shader.ComputeResource = nil
+	}
 	shader_init(shader, shader.GraphicsDevice, create_info, shader.Name)
 }
 
@@ -343,7 +497,11 @@ shader_dispose :: proc(shader: ^Shader) {
 		graphics_device_release_pipeline_hashes(shader.GraphicsDevice, &shader.PipelineHashes)
 		SDL.ReleaseGPUShader(shader.GraphicsDevice.Device, shader.Resource)
 	}
+	if shader.GraphicsDevice != nil && shader.GraphicsDevice.Device != nil && shader.ComputeResource != nil {
+		SDL.ReleaseGPUComputePipeline(shader.GraphicsDevice.Device, shader.ComputeResource)
+	}
 	shader.Resource = nil
+	shader.ComputeResource = nil
 	delete(shader.PipelineHashes)
 	shader.PipelineHashes = nil
 	shader.Disposed = true

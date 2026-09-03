@@ -56,7 +56,7 @@ BatcherMake :: proc() -> Batcher { return Batcher{Matrix=batcher_identity(), Mod
 batcher_transform :: proc(b:^Batcher, p:spatial.Vec2) -> spatial.Vec2 { m:=b.Matrix; return spatial.Vec2{p[0]*m[0]+p[1]*m[4]+m[12],p[0]*m[1]+p[1]*m[5]+m[13]} }
 batcher_mode_color :: proc(mode:BatcherMode) -> runtime.Color { switch mode { case .Normal:return runtime.Color{255,0,0,0}; case .Wash:return runtime.Color{0,255,0,0}; case .Fill:return runtime.Color{0,0,255,0} }; return runtime.Color{255,0,0,0} }
 batcher_clone_material :: proc(source:^runtime.Material) -> ^runtime.Material { if source == nil do return nil; result:=new(runtime.Material); runtime.MaterialInit(result); runtime.MaterialCopyTo(source,result); return result }
-batcher_free_material :: proc(material:^runtime.Material) { if material == nil do return; for i in 0..<len(material.Vertex.UniformBuffers) { delete(material.Vertex.UniformBuffers[i]); delete(material.Fragment.UniformBuffers[i]) }; free(material) }
+batcher_free_material :: proc(material:^runtime.Material) { if material == nil do return; for i in 0..<len(material.Vertex.UniformBuffers) { delete(material.Vertex.UniformBuffers[i]); delete(material.Fragment.UniformBuffers[i]); runtime.UniformBufferDispose(&material.Vertex.UniformBufferObjects[i]); runtime.UniformBufferDispose(&material.Fragment.UniformBufferObjects[i]) }; free(material) }
 batcher_free_batches :: proc(b:^Batcher) { for batch in b.Batches { batcher_free_material(batch.Material) } }
 batcher_ensure_batch :: proc(b:^Batcher) {
 	start := len(b.Indices)

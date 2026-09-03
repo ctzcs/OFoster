@@ -89,6 +89,19 @@ RectIntIntersection :: proc(rect, other: RectInt) -> RectInt {
 	return RectInt{left, top, right-left, bottom-top}
 }
 
+RectIntDifference :: proc(rect, other: RectInt) -> [dynamic]RectInt {
+	result: [dynamic]RectInt
+	r := RectIntValidateSize(rect)
+	o := RectIntValidateSize(other)
+	i := RectIntIntersection(r, o)
+	if i.Width <= 0 || i.Height <= 0 { append(&result, r); return result }
+	if i.Y > r.Y { append(&result, RectInt{r.X, r.Y, r.Width, i.Y-r.Y}) }
+	if RectIntBottom(i) < RectIntBottom(r) { append(&result, RectInt{r.X, RectIntBottom(i), r.Width, RectIntBottom(r)-RectIntBottom(i)}) }
+	if i.X > r.X { append(&result, RectInt{r.X, i.Y, i.X-r.X, i.Height}) }
+	if RectIntRight(i) < RectIntRight(r) { append(&result, RectInt{RectIntRight(i), i.Y, RectIntRight(r)-RectIntRight(i), i.Height}) }
+	return result
+}
+
 RectIntAt :: proc(rect: RectInt, position: Point2) -> RectInt { return RectInt{position.X, position.Y, rect.Width, rect.Height} }
 RectIntAtXY :: proc(rect: RectInt, x, y: int) -> RectInt { return RectInt{x, y, rect.Width, rect.Height} }
 RectIntAtX :: proc(rect: RectInt, x: int) -> RectInt { return RectInt{x, rect.Y, rect.Width, rect.Height} }

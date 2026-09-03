@@ -11,6 +11,7 @@ GraphicsDeviceShutdown :: runtime.GraphicsDeviceShutdown
 GraphicsDeviceBeginFrame :: runtime.GraphicsDeviceBeginFrame
 GraphicsDeviceEndFrame :: runtime.GraphicsDeviceEndFrame
 GraphicsDeviceDraw :: runtime.GraphicsDeviceDraw
+GraphicsDeviceDispatch :: runtime.GraphicsDeviceDispatch
 GraphicsDeviceClear :: runtime.GraphicsDeviceClear
 GraphicsDeviceIsTextureFormatSupported :: runtime.GraphicsDeviceIsTextureFormatSupported
 GraphicsDeviceIsTextureMultiSampleSupported :: runtime.GraphicsDeviceIsTextureMultiSampleSupported

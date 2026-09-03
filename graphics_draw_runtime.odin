@@ -147,6 +147,7 @@ MaterialStage :: struct {
 	Shader: ^Shader,
 	Samplers: [16]BoundSampler,
 	UniformBuffers: [8][dynamic]u8,
+	UniformBufferObjects: [8]UniformBuffer,
 	Stage: ShaderStage,
 }
 
@@ -155,6 +156,7 @@ material_stage_init :: proc(stage: ^MaterialStage, shader_stage: ShaderStage) {
 	stage.Shader = nil
 	for i := 0; i < len(stage.UniformBuffers); i += 1 {
 		stage.UniformBuffers[i] = nil
+		uniform_buffer_init(&stage.UniformBufferObjects[i])
 	}
 }
 
@@ -172,6 +174,7 @@ material_stage_set_uniform_buffer :: proc(stage: ^MaterialStage, data: []u8, slo
 	delete(stage.UniformBuffers[slot])
 	stage.UniformBuffers[slot] = nil
 	append(&stage.UniformBuffers[slot], ..data)
+	uniform_buffer_set(&stage.UniformBufferObjects[slot], data)
 }
 
 material_stage_get_uniform_buffer :: proc(stage: ^MaterialStage, slot: int = 0) -> []u8 {
@@ -189,6 +192,8 @@ material_stage_copy_to :: proc(stage: ^MaterialStage, to: ^MaterialStage) {
 		delete(to.UniformBuffers[i])
 		to.UniformBuffers[i] = nil
 		append(&to.UniformBuffers[i], ..stage.UniformBuffers[i][:])
+		uniform_buffer_init(&to.UniformBufferObjects[i])
+		uniform_buffer_set(&to.UniformBufferObjects[i], stage.UniformBufferObjects[i].Data[:])
 	}
 }
 
@@ -196,6 +201,10 @@ MaterialStageInit :: material_stage_init
 MaterialStageSetShader :: material_stage_set_shader
 MaterialStageSetUniformBuffer :: material_stage_set_uniform_buffer
 MaterialStageGetUniformBuffer :: material_stage_get_uniform_buffer
+MaterialStageGetUniformBufferObject :: proc(stage: ^MaterialStage, slot: int = 0) -> ^UniformBuffer {
+	if stage == nil || slot < 0 || slot >= len(stage.UniformBufferObjects) { return nil }
+	return &stage.UniformBufferObjects[slot]
+}
 MaterialStageCopyTo :: material_stage_copy_to
 MaterialStageMaxUniformBuffers :: proc(stage:^MaterialStage)->int{if stage==nil{return 0};return len(stage.UniformBuffers)}
 MaterialStageMaxSamplers :: proc(stage:^MaterialStage)->int{if stage==nil{return 0};return len(stage.Samplers)}
@@ -365,6 +374,13 @@ DrawCommand :: struct {
 	BlendMode: BlendMode,
 	CullMode: CullMode,
 	DepthCompare: DepthCompare,
+	FillMode: FillMode,
+	BackStencilState: StencilState,
+	FrontStencilState: StencilState,
+	StencilCompareMask: u8,
+	StencilWriteMask: u8,
+	StencilReferenceValue: u8,
+	StencilTestEnabled: bool,
 	DepthTestEnabled: bool,
 	DepthWriteEnabled: bool,
 	Viewport: RectInt,
@@ -388,6 +404,13 @@ draw_command_init :: proc(command: ^DrawCommand) {
 	command.BlendMode = BlendModePremultiply
 	command.CullMode = .None
 	command.DepthCompare = .Less
+	command.FillMode = .Fill
+	command.BackStencilState = StencilStateMake(.Keep, .Always)
+	command.FrontStencilState = StencilStateMake(.Keep, .Always)
+	command.StencilCompareMask = 0xff
+	command.StencilWriteMask = 0xff
+	command.StencilReferenceValue = 0
+	command.StencilTestEnabled = false
 	command.DepthTestEnabled = false
 	command.DepthWriteEnabled = false
 	command.HasViewport = false
@@ -678,6 +701,49 @@ cull_mode_to_sdl :: proc(mode: CullMode) -> SDL.GPUCullMode {
 	return .NONE
 }
 
+fill_mode_to_sdl :: proc(mode: FillMode) -> SDL.GPUFillMode {
+	#partial switch mode {
+	case .Fill:
+		return .FILL
+	case .Line:
+		return .LINE
+	}
+	return .FILL
+}
+
+stencil_op_to_sdl :: proc(op: StencilOp) -> SDL.GPUStencilOp {
+	#partial switch op {
+	case .Keep:
+		return .KEEP
+	case .Zero:
+		return .ZERO
+	case .Replace:
+		return .REPLACE
+	case .IncrementAndClamp:
+		return .INCREMENT_AND_CLAMP
+	case .DecrementAndClamp:
+		return .DECREMENT_AND_CLAMP
+	case .Invert:
+		return .INVERT
+	case .IncrementAndWrap:
+		return .INCREMENT_AND_WRAP
+	case .DecrementAndWrap:
+		return .DECREMENT_AND_WRAP
+	case .Invalid:
+		return .INVALID
+	}
+	return .KEEP
+}
+
+stencil_state_to_sdl :: proc(state: StencilState) -> SDL.GPUStencilOpState {
+	return SDL.GPUStencilOpState{
+		fail_op = stencil_op_to_sdl(state.FailOp),
+		pass_op = stencil_op_to_sdl(state.PassOp),
+		depth_fail_op = stencil_op_to_sdl(state.DepthFailOp),
+		compare_op = depth_compare_to_sdl(state.CompareOp),
+	}
+}
+
 depth_compare_to_sdl :: proc(compare: DepthCompare) -> SDL.GPUCompareOp {
 	#partial switch compare {
 	case .Always:
@@ -934,6 +1000,18 @@ create_pipeline_for_draw_command :: proc(graphics_device: ^GraphicsDevice, comma
 	hash = hash_mix_u64(hash, u64(uintptr(command.Material.Fragment.Shader.Resource)))
 	hash = hash_blend_mode(hash, command.BlendMode)
 	hash = hash_mix_u64(hash, u64(command.CullMode))
+	hash = hash_mix_u64(hash, u64(command.FillMode))
+	hash = hash_mix_u64(hash, u64(command.BackStencilState.FailOp))
+	hash = hash_mix_u64(hash, u64(command.BackStencilState.PassOp))
+	hash = hash_mix_u64(hash, u64(command.BackStencilState.DepthFailOp))
+	hash = hash_mix_u64(hash, u64(command.BackStencilState.CompareOp))
+	hash = hash_mix_u64(hash, u64(command.FrontStencilState.FailOp))
+	hash = hash_mix_u64(hash, u64(command.FrontStencilState.PassOp))
+	hash = hash_mix_u64(hash, u64(command.FrontStencilState.DepthFailOp))
+	hash = hash_mix_u64(hash, u64(command.FrontStencilState.CompareOp))
+	hash = hash_mix_u64(hash, u64(command.StencilCompareMask))
+	hash = hash_mix_u64(hash, u64(command.StencilWriteMask))
+	if command.StencilTestEnabled { hash = hash_mix_u64(hash, 1) } else { hash = hash_mix_u64(hash, 0) }
 	hash = hash_mix_u64(hash, u64(command.DepthCompare))
 	if command.DepthTestEnabled {
 		hash = hash_mix_u64(hash, 1)
@@ -985,19 +1063,18 @@ create_pipeline_for_draw_command :: proc(graphics_device: ^GraphicsDevice, comma
 		has_depth_stencil_target = depth_stencil_format != .INVALID,
 	}
 
-	stencil_ops := SDL.GPUStencilOpState{fail_op = .KEEP, pass_op = .KEEP, depth_fail_op = .KEEP, compare_op = .ALWAYS}
 	depth_stencil := SDL.GPUDepthStencilState{
 		compare_op = depth_compare_to_sdl(command.DepthCompare),
-		back_stencil_state = stencil_ops,
-		front_stencil_state = stencil_ops,
-		compare_mask = 0,
-		write_mask = 0,
+		back_stencil_state = stencil_state_to_sdl(command.BackStencilState),
+		front_stencil_state = stencil_state_to_sdl(command.FrontStencilState),
+		compare_mask = command.StencilCompareMask,
+		write_mask = command.StencilWriteMask,
 		enable_depth_test = command.DepthTestEnabled,
 		enable_depth_write = command.DepthWriteEnabled,
-		enable_stencil_test = false,
+		enable_stencil_test = command.StencilTestEnabled,
 	}
 	rasterizer := SDL.GPURasterizerState{
-		fill_mode = .FILL,
+		fill_mode = fill_mode_to_sdl(command.FillMode),
 		cull_mode = cull_mode_to_sdl(command.CullMode),
 		front_face = .COUNTER_CLOCKWISE,
 		depth_bias_constant_factor = 0,
@@ -1062,6 +1139,7 @@ graphics_device_draw :: proc(graphics_device: ^GraphicsDevice, command: ^DrawCom
 		SDL.BindGPUGraphicsPipeline(graphics_device.RenderPass, pipeline)
 		graphics_device.RenderPassPipeline = pipeline
 	}
+	SDL.SetGPUStencilReference(graphics_device.RenderPass, command.StencilReferenceValue)
 
 	viewport := RectInt{0, 0, graphics_device.RenderPassTargetSize.X, graphics_device.RenderPassTargetSize.Y}
 	if command.HasViewport {
