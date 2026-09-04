@@ -174,6 +174,7 @@ material_stage_set_uniform_buffer :: proc(stage: ^MaterialStage, data: []u8, slo
 	delete(stage.UniformBuffers[slot])
 	stage.UniformBuffers[slot] = nil
 	append(&stage.UniformBuffers[slot], ..data)
+	uniform_buffer_clear(&stage.UniformBufferObjects[slot])
 	uniform_buffer_set(&stage.UniformBufferObjects[slot], data)
 }
 

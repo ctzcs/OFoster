@@ -49,16 +49,25 @@ graphics_device_dispatch :: proc(device: ^GraphicsDevice, command: ^ComputeComma
 	if command_buffer == nil { return false }
 	buffer_bindings := make([]SDL.GPUStorageBufferReadWriteBinding, len(command.StorageBuffers), context.temp_allocator)
 	for buffer, i in command.StorageBuffers {
-		if buffer == nil || buffer.Base.Resource == nil { return false }
+		if buffer == nil || buffer.Base.Resource == nil {
+			if own_command_buffer { _ = SDL.CancelGPUCommandBuffer(command_buffer) }
+			return false
+		}
 		buffer_bindings[i] = SDL.GPUStorageBufferReadWriteBinding{buffer = buffer.Base.Resource, cycle = false}
 	}
 	texture_bindings := make([]SDL.GPUStorageTextureReadWriteBinding, len(command.StorageTextures), context.temp_allocator)
 	for texture, i in command.StorageTextures {
-		if texture == nil || texture.Resource == nil { return false }
+		if texture == nil || texture.Resource == nil {
+			if own_command_buffer { _ = SDL.CancelGPUCommandBuffer(command_buffer) }
+			return false
+		}
 		texture_bindings[i] = SDL.GPUStorageTextureReadWriteBinding{texture = texture.Resource, mip_level = 0, layer = 0, cycle = false}
 	}
 	pass := SDL.BeginGPUComputePass(command_buffer, raw_data(texture_bindings), u32(len(texture_bindings)), raw_data(buffer_bindings), u32(len(buffer_bindings)))
-	if pass == nil { return false }
+	if pass == nil {
+		if own_command_buffer { _ = SDL.CancelGPUCommandBuffer(command_buffer) }
+		return false
+	}
 	defer SDL.EndGPUComputePass(pass)
 	SDL.BindGPUComputePipeline(pass, command.Shader.ComputeResource)
 	for uniform, i in command.UniformBuffers {

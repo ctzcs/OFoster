@@ -1,3 +1,7 @@
 package foster_internal
 
-InputProviderSDLReady :: proc() -> bool { return true }
+import SDL "vendor:sdl3"
+
+InputProviderSDLReady :: proc() -> bool {
+	return SDL.GetVersion() != 0
+}

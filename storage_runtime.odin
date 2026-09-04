@@ -293,7 +293,9 @@ zip_storage_as_container :: proc(storage: ^ZipStorage) -> ^StorageContainer {
 }
 
 zip_storage_exists :: proc(storage: ^ZipStorage, path: string) -> bool {
-	return storage != nil && storage.Entries != nil && storage.Entries[path] != nil
+	if storage == nil || storage.Entries == nil { return false }
+	_, ok := storage.Entries[path]
+	return ok
 }
 
 zip_storage_read_all_bytes :: proc(storage: ^ZipStorage, path: string, allocator := context.allocator) -> []byte {

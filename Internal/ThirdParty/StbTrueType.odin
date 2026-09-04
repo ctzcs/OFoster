@@ -11,4 +11,6 @@ StbFontGlyph :: proc(f:^StbFont,codepoint:int)->int{if !f.Valid{return 0};return
 StbFontKerning :: proc(f:^StbFont,a,b:int,scale:f32)->f32{if !f.Valid{return 0};return f32(stb.GetGlyphKernAdvance(&f.Info,c.int(a),c.int(b)))*scale}
 StbFontCharacter :: proc(f:^StbFont,glyph:int,scale:f32)->(width,height:int,advance,offset_x,offset_y:f32,visible:bool){if !f.Valid{return};aw,lsb:c.int=0,0;stb.GetGlyphHMetrics(&f.Info,c.int(glyph),&aw,&lsb);x0,y0,x1,y1:c.int=0,0,0,0;stb.GetGlyphBitmapBox(&f.Info,c.int(glyph),scale,scale,&x0,&y0,&x1,&y1);return int(x1-x0),int(y1-y0),f32(aw)*scale,f32(x0),f32(y0),x1>x0&&y1>y0}
 StbFontRasterize :: proc(f:^StbFont,glyph,width,height:int,scale:f32)->[dynamic]u8{pixels:[dynamic]u8={};if !f.Valid||width<=0||height<=0{return pixels};resize(&pixels,width*height);stb.MakeGlyphBitmap(&f.Info,&pixels[0],c.int(width),c.int(height),c.int(width),scale,scale,c.int(glyph));return pixels}
-StbTrueTypeAvailable :: proc() -> bool { return true }
+StbTrueTypeAvailable :: proc() -> bool {
+	return size_of(stb.fontinfo) > 0
+}

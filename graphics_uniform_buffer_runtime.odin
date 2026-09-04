@@ -21,7 +21,10 @@ uniform_buffer_set :: proc(buffer: ^UniformBuffer, data: []u8, offset: int = 0) 
 }
 
 uniform_buffer_set_value :: proc(buffer: ^UniformBuffer, value: $T, offset: int = 0) {
-	uniform_buffer_set(buffer, transmute([]u8)raw_data(value[:]), offset)
+	data := make([]u8, size_of(T), context.temp_allocator)
+	copy_value := value
+	mem.copy(raw_data(data), &copy_value, size_of(T))
+	uniform_buffer_set(buffer, data, offset)
 }
 
 uniform_buffer_get :: proc(buffer: ^UniformBuffer) -> []u8 {
